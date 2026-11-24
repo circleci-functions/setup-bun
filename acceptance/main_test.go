@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 
+	"gotest.tools/v3/assert"
+
 	"github.com/circleci-functions/toolkit/sdk/sdktest"
 	"github.com/circleci-functions/toolkit/testing/compiler"
 	"github.com/circleci-functions/toolkit/testing/runner"
@@ -87,14 +89,19 @@ type runFunc func(t *testing.T, extraEnv map[string]string, args ...string) (str
 // sandbox returns a sandbox backed by an in-memory cache, plus a run function
 // bound to its env. bun resolves its cache under $HOME, which the sandbox
 // points at a temp dir, so an install never touches the real one.
-func sandbox(t *testing.T, opts ...runner.Opt) (*sdktest.Sandbox, runFunc) {
+func sandbox(t *testing.T) (*sdktest.Sandbox, runFunc) {
 	t.Helper()
 	s := sdktest.NewSandbox(t)
-	return s, func(t *testing.T, extraEnv map[string]string, args ...string) (string, error) {
+	return s, newRun(s)
+}
+
+// newRun returns a run function that executes the binary in s's environment.
+func newRun(s *sdktest.Sandbox) runFunc {
+	return func(t *testing.T, extraEnv map[string]string, args ...string) (string, error) {
 		t.Helper()
 		env := s.Env()
 		maps.Copy(env, extraEnv)
-		r := runner.New(t, binaryPath, append([]runner.Opt{runner.WithSandboxEnv(env)}, opts...)...)
+		r := runner.New(t, binaryPath, runner.WithSandboxEnv(env))
 		_, err := r.Run(args...)
 		return r.StdoutString() + r.StderrString(), err
 	}
@@ -111,4 +118,22 @@ func reported(t *testing.T, out, pattern string) string {
 	}
 	t.Fatalf("setup-bun did not report %q:\n%s", pattern, out)
 	return ""
+}
+
+// copyFixture copies the bun fixture, a package.json and its bun.lock, into a
+// fresh temp app dir and returns it.
+func copyFixture(t *testing.T) string {
+	t.Helper()
+	src, err := filepath.Abs(filepath.Join("..", "internal", "testing", "testdata", "bun"))
+	assert.NilError(t, err)
+	dst := t.TempDir()
+	entries, err := os.ReadDir(src)
+	assert.NilError(t, err)
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(src, e.Name())) //nolint:gosec // fixture path is controlled by the test suite
+		assert.NilError(t, err)
+		//nolint:gosec // fixtures are not secrets
+		assert.NilError(t, os.WriteFile(filepath.Join(dst, e.Name()), data, 0600))
+	}
+	return dst
 }
