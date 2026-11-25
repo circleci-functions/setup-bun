@@ -13,10 +13,8 @@ import (
 	"github.com/circleci-functions/toolkit/sdk"
 )
 
-type cli struct{}
-
-func (c *cli) Run(context.Context, *sdk.Client) error {
-	return nil
+type cli struct {
+	Install installCmd `cmd:"" default:"withargs" help:"Install Bun and put bun and bunx on PATH. Runs when no command is given."`
 }
 
 func main() {
